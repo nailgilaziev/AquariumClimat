@@ -11,7 +11,7 @@
 // The DallasTemperature library can do all this work for you!
 // http://milesburton.com/Dallas_Temperature_Control_Library
 
-#define ONE_WIRE_BUS 2
+#define ONE_WIRE_BUS 10
 // Temperature high gisteresis
 byte TH = 26;
 // Temperature low gisteresis
@@ -73,7 +73,7 @@ void dispOff() {
   }
 }
 
-void dispModeTL() {
+void dispModeTL() {  
   dispTemp(19);
   delay(500);
 }
@@ -87,40 +87,58 @@ void dispMode() {
   switch (mode) {
   case 0:
     dispModeTL();
+    dispTemp(TL);    
     break;
   case 1:
     dispModeTH();
+    dispTemp(TH);    
     break;
   case 2:
+    dispOff();
+    delay(50);
     animateStart();
     break;
+  default:
+    dispOff();
   }
 }
 
-int nextMode() { return mode = mode+1 % 3; }
+int nextMode() { 
+  Serial.print("current mode ");
+  Serial.print(mode);
+  Serial.print(" changed to ");
+  mode = ++mode % 3; 
+  Serial.println(mode);
+  return mode;
+}
 
 void changeGisteresisLevel(int mode, int delta) {
   int temp = 0;
   if (mode)
-    temp = TH = TH + delta;
+    temp = TH = constrain(TH + delta,19,30);
   else
-    temp = TL = TL + delta;
+    temp = TL = constrain(TL + delta,19,30);
   EEPROM.write(mode, temp);
+  dispTemp(temp);
 }
 
 byte readTL() {
   TL = EEPROM.read(0);
   if (TL == 255) {
-    changeGisteresisLevel(0, 24);
+    EEPROM.write(0, 24);
   }
+  Serial.print("TL=");
+  Serial.println(TL);
   return TL;
 }
 
 byte readTH() {
   TH = EEPROM.read(1);
   if (TH == 255) {
-    changeGisteresisLevel(1, 25);
+    EEPROM.write(1, 25);
   }
+  Serial.print("TH=");
+  Serial.println(TH);
   return TH;
 }
 
@@ -143,19 +161,15 @@ void setup(void) {
   rotaryDebouncer.interval(1);
 
   TL = readTL();
-  TH = readTH();
+  TH = readTH();  
 
-  // animate current values
-  animateStart();
-  dispOff();
-  delay(500);
-  dispModeTL();
-  dispTemp(TL);
-  delay(2000);
-  dispModeTH();
-  dispTemp(TH);
-  delay(2000);
-  dispOff();
+  //show boot and TL TH values
+  for(int i = 0; i<=3; i++){
+    mode = i;
+    dispMode();
+    delay(800);
+  }  
+  mode = 2;
 }
 
 #define TEMP_REQ_FREQUENCY_TIME  4000
@@ -164,6 +178,7 @@ unsigned long requestedTemperatureLastTime = 0;
 void loop(void) {
   buttonDebouncer.update();
   if (buttonDebouncer.rose()) {
+    Serial.println("Button pressed");
     nextMode();
     dispMode();
     setupModeLastInteraction = millis();
@@ -173,6 +188,7 @@ void loop(void) {
       // autoexit from setup menu
       setupModeLastInteraction = 0;
       mode = 2;
+      dispMode();
       return;
     }
     rotaryDebouncer.update();
@@ -188,8 +204,10 @@ void loop(void) {
   if (millis() - requestedTemperatureLastTime < TEMP_REQ_FREQUENCY_TIME)
     return;
   sensors.requestTemperatures(); // Send the command to get temperatures
-  requestedTemperatureLastTime = millis();
+  requestedTemperatureLastTime = millis();  
   int celsius = sensors.getTempCByIndex(0);
+  Serial.print(celsius);
+  Serial.println("C");
 
   if (celsius < TL) {
     digitalWrite(pRelay, HIGH);
